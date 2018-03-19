@@ -67,6 +67,8 @@ import (
 	usersyncers "github.com/prebid/prebid-server/usersync"
 )
 
+var basicAuth = flag.String("basicAuthPassword", "user:pass", "Username:password")
+
 type DomainMetrics struct {
 	RequestMeter metrics.Meter
 }
@@ -912,6 +914,24 @@ func serve(cfg *config.Configuration) error {
 	router.POST("/validate", validate)
 	router.GET("/status", status)
 	router.GET("/", serveIndex)
+
+	basicAuthCrds := strings.Split(*basicAuth, ":")
+	router.GET("/metrics", func(writer http.ResponseWriter, request *http.Request, params httprouter.Params) {
+
+		if username, pass, ok := request.BasicAuth(); !ok {
+			request.SetBasicAuth(basicAuthCrds[0], basicAuthCrds[1])
+			writer.Write([]byte("forbidden"))
+			return
+		} else {
+			if username != basicAuthCrds[0] || pass != basicAuthCrds[1] {
+				request.SetBasicAuth(basicAuthCrds[0], basicAuthCrds[1])
+				writer.Write([]byte("forbidden"))
+				return
+			}
+		}
+
+		metrics.WriteOnce(metricsRegistry, writer)
+	})
 	router.ServeFiles("/static/*filepath", http.Dir("static"))
 
 	hostCookieSettings = pbs.HostCookieSettings{
